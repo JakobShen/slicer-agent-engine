@@ -1,0 +1,3 @@
+# Extra deps for scripts/open_ai_test.py (OpenAI tool-calling + Gemini video reading)
+openai>=1.0.0
+google-genai>=1.0.0

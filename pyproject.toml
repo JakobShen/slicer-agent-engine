@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slicer-agent-engine"
+version = "0.2.0"
+description = "Minimal Viewer-as-Engine adapter for 3D Slicer WebServer (with MCP + agent test harness)"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "slicer-agent-engine contributors"}]
+license = {text = "Apache-2.0"}
+
+dependencies = [
+  "requests>=2.31.0",
+  "pydantic>=2.6.0",
+  "fastapi>=0.110.0",
+  "uvicorn>=0.27.0",
+  # MCP server SDK
+  "mcp[cli]>=1.2.0",
+]
+
+[project.optional-dependencies]
+# Tool-calling demo scripts
+agent = [
+  "openai>=1.0.0",
+  "google-genai>=1.0.0",
+]
+
+[tool.setuptools]
+packages = ["slicer_agent_engine"]
+
+[project.scripts]
+# Convenience entry point
+slicer-agent-mcp = "slicer_agent_engine.mcp_server:main"
