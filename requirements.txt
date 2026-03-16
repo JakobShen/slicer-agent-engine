@@ -2,9 +2,13 @@
 requests>=2.31.0
 pydantic>=2.6.0
 
+# Optional but recommended for keyframe contact sheets (auto viewer mode)
+Pillow>=10.0.0
+
 # Optional dev/debug HTTP tool server (keep if you use server_http.py)
 fastapi>=0.110.0
 uvicorn>=0.27.0
 
-# MCP server SDK (stdio)
+# MCP server SDK / compatibility layer
+fastmcp>=2.11.0
 mcp[cli]>=1.2.0

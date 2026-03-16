@@ -84,7 +84,7 @@ def build_app(
             return ctx.select_volume(volume_id=args.get("volume_id"), volume_name=args.get("volume_name"))
         if name == "get_slice_png":
             return ctx.get_slice_png(
-                view=args.get("view", "red"),
+                view=args.get("view", "axial"),
                 orientation=args.get("orientation", "axial"),
                 scroll_to=float(args.get("scroll_to", 0.5)),
                 size=int(args.get("size", 512)),
@@ -92,7 +92,7 @@ def build_app(
             )
         if name == "capture_cine":
             return ctx.capture_cine(
-                view=args.get("view", "red"),
+                view=args.get("view", "axial"),
                 orientation=args.get("orientation", "axial"),
                 start=float(args.get("start", 0.0)),
                 end=float(args.get("end", 1.0)),

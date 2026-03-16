@@ -21,7 +21,7 @@ This repo provides:
 - `SessionManager` (trace/state)
 - `ToolContext` (agent-friendly functions)
 - **MCP server** (stdio) exposing the tool surface
-- Optional OpenAI + Gemini test harness (`scripts/open_ai_test.py`)
+- Optional OpenAI + Gemini tool-calling demos (`scripts/openai_ai_manual.py`, `scripts/open_ai_auto.py`)
 
 ---
 
@@ -65,7 +65,7 @@ brew install ffmpeg
 
 ## Auto-starting Slicer WebServer (best effort)
 
-Both `scripts/manual_test.py` and `scripts/open_ai_test.py` will:
+Both `scripts/manual_test.py` and the OpenAI demo scripts will:
 
 1) try to ping `http://localhost:2016/slicer/system/version`
 2) if unreachable, attempt to launch Slicer and run `slicer_side/bootstrap_webserver.py`
@@ -111,16 +111,19 @@ export GEMINI_API_KEY="..."
 Run:
 
 ```bash
-python scripts/open_ai_test.py
+python scripts/open_ai_auto.py
+
+# or the full manual tool surface:
+python scripts/openai_ai_manual.py
 ```
 
 Notes:
 
-- The script uses **OpenAI Responses API function calling**.
+- The scripts use **OpenAI Responses API function calling**.
 - Slice PNGs are attached back to the model as `input_image` data URLs.
 - GPT tool calls do not include video inputs here; if an MP4 is produced, the model can call:
   `gemini_analyze_video(video_path, prompt)`.
-- Default Gemini model is `gemini-3-pro-preview` (requested). Gemini docs indicate this model is deprecated;
+- Default Gemini model is `gemini-3.1-pro-preview`. Gemini docs indicate `gemini-3-pro-preview` is deprecated;
   prefer `gemini-3.1-pro-preview` by setting:
 
 ```bash
@@ -172,3 +175,9 @@ slicer-agent-mcp --base-url http://localhost:2016 --bridge-dir ./slicer_side --o
 - `scripts/`
   - `manual_test.py`: end-to-end test without any LLM
   - `open_ai_test.py`: OpenAI tool-calling demo + Gemini video analysis tool
+
+
+### Scroll options
+
+- **Option A (keyframes):** `scroll_sweep(output='keyframes')` returns PNG frames + (optionally) a contact sheet.
+- **Option B (one-step video analysis):** `scroll_sweep(output='video', analyze=true)` renders an MP4 cine and runs Gemini for a quick summary.

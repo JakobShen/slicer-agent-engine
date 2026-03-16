@@ -16,7 +16,8 @@ dependencies = [
   "pydantic>=2.6.0",
   "fastapi>=0.110.0",
   "uvicorn>=0.27.0",
-  # MCP server SDK
+  # MCP compatibility layer / FastMCP runtime
+  "fastmcp>=2.11.0",
   "mcp[cli]>=1.2.0",
 ]
 
@@ -25,10 +26,11 @@ dependencies = [
 agent = [
   "openai>=1.0.0",
   "google-genai>=1.0.0",
+  "anthropic>=0.39.0",
 ]
 
-[tool.setuptools]
-packages = ["slicer_agent_engine"]
+[tool.setuptools.packages.find]
+include = ["slicer_agent_engine*"]
 
 [project.scripts]
 # Convenience entry point

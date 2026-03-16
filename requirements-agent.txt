@@ -1,3 +1,7 @@
-# Extra deps for scripts/open_ai_test.py (OpenAI tool-calling + Gemini video reading)
+# Extra deps for OpenAI tool-calling + Gemini video reading
 openai>=1.0.0
 google-genai>=1.0.0
+anthropic>=0.39.0
+
+# Optional: contact sheets for keyframe sweeps
+Pillow>=10.0.0

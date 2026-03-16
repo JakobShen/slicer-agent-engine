@@ -14,6 +14,25 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+_SLICE_VIEW_ALIASES = {
+    "axial": "red",
+    "red": "red",
+    "r": "red",
+    "sagittal": "yellow",
+    "yellow": "yellow",
+    "y": "yellow",
+    "coronal": "green",
+    "green": "green",
+    "g": "green",
+}
+
+
+def _normalize_slice_view(view: str) -> str:
+    v = (view or "").strip().lower()
+    if v in _SLICE_VIEW_ALIASES:
+        return _SLICE_VIEW_ALIASES[v]
+    raise ValueError(f"Unsupported view: {view!r} (expected axial/sagittal/coronal)")
+
 
 class SlicerRequestError(RuntimeError):
     """Raised when Slicer WebServer returns an error or is unreachable."""
@@ -61,6 +80,7 @@ class SlicerClient:
         headers: Optional[Dict[str, str]] = None,
         expect: Optional[str] = None,
         stream: bool = False,
+        timeout_s: Optional[float] = None,
     ) -> requests.Response:
         url = self._url(path)
         try:
@@ -71,7 +91,7 @@ class SlicerClient:
                 data=data,
                 json=json_body,
                 headers=headers,
-                timeout=self.timeout_s,
+                timeout=float(timeout_s if timeout_s is not None else self.timeout_s),
                 stream=stream,
             )
         except Exception as e:
@@ -112,6 +132,7 @@ class SlicerClient:
         headers: Optional[Dict[str, str]] = None,
         expect: Optional[str] = None,
         stream: bool = False,
+        timeout_s: Optional[float] = None,
     ) -> requests.Response:
         """Low-level escape hatch for forward-compatibility.
 
@@ -127,6 +148,7 @@ class SlicerClient:
             headers=headers,
             expect=expect,
             stream=stream,
+            timeout_s=timeout_s,
         )
 
     # -------------------------
@@ -153,7 +175,7 @@ class SlicerClient:
     def get_slice_png(
         self,
         *,
-        view: str = "red",
+        view: str = "axial",
         orientation: str = "axial",
         scroll_to: float = 0.5,
         size: int = 512,
@@ -163,16 +185,17 @@ class SlicerClient:
         """Render a 2D slice view to PNG via `/slicer/slice`.
 
         Parameters map to WebServer's query params:
-        - view: red/yellow/green
+        - view: axial/sagittal/coronal
         - orientation: axial/sagittal/coronal
         - scrollTo: normalized [0,1]
         - size: square pixel size
         - offset: (optional) alternative to scrollTo
         - copySliceGeometryFrom: (optional) node id
         """
+        slicer_view = _normalize_slice_view(view)
 
         params: Dict[str, Any] = {
-            "view": view,
+            "view": slicer_view,
             "orientation": orientation,
             "scrollTo": str(scroll_to),
             "size": str(int(size)),
@@ -189,7 +212,7 @@ class SlicerClient:
         self,
         out_path: Union[str, Path],
         *,
-        view: str = "red",
+        view: str = "axial",
         orientation: str = "axial",
         scroll_to: float = 0.5,
         size: int = 512,
@@ -219,7 +242,7 @@ class SlicerClient:
         """
 
         try:
-            _ = self.get_slice_png(view="red", orientation="axial", scroll_to=0.5, size=64)
+            _ = self.get_slice_png(view="axial", orientation="axial", scroll_to=0.5, size=64)
             return True
         except Exception:
             return False
@@ -228,7 +251,7 @@ class SlicerClient:
         """Raise a clear error if `/slicer/slice` is not usable."""
 
         try:
-            _ = self.get_slice_png(view="red", orientation="axial", scroll_to=0.5, size=64)
+            _ = self.get_slice_png(view="axial", orientation="axial", scroll_to=0.5, size=64)
         except Exception as e:
             msg = str(e)
             if "sliceWidget" in msg or "layoutManager" in msg:
@@ -547,7 +570,7 @@ class SlicerClient:
     # Exec endpoint (unsafe; use sparingly)
     # -------------------------
 
-    def exec_python(self, source: str) -> Dict[str, Any]:
+    def exec_python(self, source: str, *, timeout_s: Optional[float] = None) -> Dict[str, Any]:
         """Execute Python in Slicer via `/slicer/exec`.
 
         The code must set `__execResult` to a JSON-serializable dict.
@@ -558,6 +581,7 @@ class SlicerClient:
             data=source.encode("utf-8"),
             headers={"Content-Type": "text/plain"},
             expect="application/json",
+            timeout_s=timeout_s,
         )
         try:
             return resp.json()
@@ -593,6 +617,7 @@ class SlicerClient:
         tool: str,
         args: Dict[str, Any],
         session_id: Optional[str] = None,
+        timeout_s: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Call a *fixed-entry* bridge module inside Slicer via `/slicer/exec`.
 
@@ -610,15 +635,18 @@ class SlicerClient:
         payload_b64 = base64.b64encode(payload_json.encode("utf-8")).decode("ascii")
         bridge_dir = Path(bridge_dir).resolve()
 
-        source = f"""import sys, json, base64
-bridge_dir = r\"{str(bridge_dir)}\"
-if bridge_dir not in sys.path:
-    sys.path.insert(0, bridge_dir)
-import slicer_agent_bridge as sab
+        source = f"""import json, base64, importlib.util, pathlib
+bridge_dir = pathlib.Path(r\"{str(bridge_dir)}\")
+bridge_path = bridge_dir / "slicer_agent_bridge.py"
+spec = importlib.util.spec_from_file_location("slicer_agent_bridge_runtime", str(bridge_path))
+if spec is None or spec.loader is None:
+    raise RuntimeError(f"Could not load bridge module from: {{bridge_path}}")
+sab = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(sab)
 payload = json.loads(base64.b64decode(\"{payload_b64}\").decode('utf-8'))
 __execResult = sab.dispatch(payload)
 """
-        return self.exec_python(source)
+        return self.exec_python(source, timeout_s=timeout_s)
 
     # -------------------------
     # /dicom (DICOMweb) raw proxy
