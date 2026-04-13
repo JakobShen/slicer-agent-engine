@@ -3,7 +3,7 @@
 ## Render a slice
 
 ```bash
-curl "http://localhost:2016/slicer/slice?view=red&orientation=axial&scrollTo=0.5&size=512" -o slice.png
+curl "http://localhost:2016/slicer/slice?view=axial&orientation=axial&scrollTo=0.5&size=512" -o slice.png
 ```
 
 ## Execute Python (dangerous)
@@ -17,4 +17,3 @@ curl -X POST "http://localhost:2016/slicer/exec" --data "import SampleData; v=Sa
 ```bash
 curl "http://localhost:2016/slicer/volumes"
 ```
-

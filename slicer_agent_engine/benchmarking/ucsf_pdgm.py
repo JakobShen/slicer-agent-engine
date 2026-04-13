@@ -4,7 +4,19 @@ import csv
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence
+
+
+_SEGMENTATION_NAME_HINTS = (
+    "tumor_segmentation",
+    "tumour_segmentation",
+    "segmentation",
+    "tumor_mask",
+    "tumour_mask",
+    "mask",
+    "label",
+    "seg",
+)
 
 
 @dataclass(frozen=True)
@@ -15,6 +27,7 @@ class UCSFPDGMCase:
     nifti_files: List[Path]
     diagnosis: Optional[str]
     label: Optional[str]  # "A"/"B"/"C" or None if unknown
+    segmentation_file: Optional[Path] = None
 
 
 def folder_to_csv_id(folder_name: str) -> Optional[str]:
@@ -55,8 +68,6 @@ def diagnosis_to_label(diagnosis: Optional[str]) -> Optional[str]:
     return None
 
 
-
-
 def diagnosis_subtype(diagnosis: Optional[str]) -> Optional[str]:
     """Return a canonical subtype key used for balanced UCSF-PDGM sampling."""
 
@@ -73,6 +84,7 @@ def diagnosis_subtype(diagnosis: Optional[str]) -> Optional[str]:
         return "Astrocytoma"
     return None
 
+
 def read_metadata(csv_path: Path) -> Dict[str, Dict[str, str]]:
     """Load the UCSF-PDGM metadata CSV into a dict keyed by ID."""
 
@@ -86,6 +98,51 @@ def read_metadata(csv_path: Path) -> Dict[str, Dict[str, str]]:
                 continue
             meta[str(rid)] = row
     return meta
+
+
+def _is_nifti_path(path: Path) -> bool:
+    name = str(path.name).lower()
+    return name.endswith(".nii") or name.endswith(".nii.gz")
+
+
+def _looks_like_segmentation_name(name: str) -> bool:
+    name_l = str(name or "").lower()
+    return any(token in name_l for token in _SEGMENTATION_NAME_HINTS)
+
+
+def find_segmentation_file(case_dir: Path) -> Optional[Path]:
+    """Return the most likely NIfTI segmentation file inside a UCSF-PDGM case folder."""
+
+    case_dir = Path(case_dir)
+    if not case_dir.exists() or not case_dir.is_dir():
+        return None
+
+    candidates: List[Path] = []
+    for path in sorted(case_dir.iterdir()):
+        if not path.is_file() or not _is_nifti_path(path):
+            continue
+        if _looks_like_segmentation_name(path.name):
+            candidates.append(path)
+    if not candidates:
+        return None
+
+    def _score(path: Path) -> tuple[int, str]:
+        name = path.name.lower()
+        score = 0
+        if "tumor_segmentation" in name or "tumour_segmentation" in name:
+            score += 100
+        if "segmentation" in name:
+            score += 50
+        if "tumor" in name or "tumour" in name:
+            score += 20
+        if "mask" in name:
+            score += 10
+        if "label" in name:
+            score += 5
+        return (-score, name)
+
+    candidates.sort(key=_score)
+    return candidates[0]
 
 
 def select_core_modalities(
@@ -104,9 +161,9 @@ def select_core_modalities(
     """
 
     case_dir = Path(case_dir)
-    all_files = sorted([p for p in case_dir.iterdir() if p.is_file() and str(p).lower().endswith((".nii", ".nii.gz"))])
+    all_files = sorted([p for p in case_dir.iterdir() if p.is_file() and _is_nifti_path(p)])
     if not include_segmentations:
-        all_files = [p for p in all_files if "segmentation" not in p.name.lower()]
+        all_files = [p for p in all_files if not _looks_like_segmentation_name(p.name)]
 
     if include_extra:
         return all_files
@@ -143,15 +200,14 @@ def iter_cases(
     prefer_bias: bool = True,
     balance_diagnosis_subtypes: bool = False,
 ) -> Iterable[UCSFPDGMCase]:
-    """Yield UCSF-PDGM cases from `data_root`.
+    """Yield UCSF-PDGM cases from ``data_root``.
 
-    Expects per-case folders like `UCSF-PDGM-0004_nifti`.
+    Expects per-case folders like ``UCSF-PDGM-0004_nifti``.
     """
 
     data_root = Path(data_root).expanduser().resolve()
     meta = read_metadata(metadata_csv)
 
-    # Deterministic ordering.
     case_dirs = sorted([p for p in data_root.iterdir() if p.is_dir() and p.name.startswith("UCSF-PDGM-") and "nifti" in p.name.lower()])
 
     cases: List[UCSFPDGMCase] = []
@@ -176,6 +232,7 @@ def iter_cases(
                 nifti_files=nifti_files,
                 diagnosis=diagnosis,
                 label=label,
+                segmentation_file=find_segmentation_file(case_dir),
             )
         )
 

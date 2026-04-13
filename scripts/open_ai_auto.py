@@ -8,35 +8,15 @@ This entrypoint is intentionally thin. The reusable logic lives in
 from __future__ import annotations
 
 
-import sys
-from pathlib import Path
-
-
-def _ensure_imports() -> None:
-    try:
-        import slicer_agent_engine  # noqa: F401
-        return
-    except ModuleNotFoundError:
-        repo_root = Path(__file__).resolve().parents[1]
-        if str(repo_root) not in sys.path:
-            sys.path.insert(0, str(repo_root))
-
-
-_ensure_imports()
-
-
 import logging
 import os
 from pathlib import Path
 
+from _script_support import bootstrap_runtime, default_model_from_env, ensure_repo_imports
+
+ensure_repo_imports()
+
 from slicer_agent_engine.agents.auto_agent import run_auto_task
-from slicer_agent_engine.gemini_video import GeminiVideoAnalyzer
-from slicer_agent_engine.llm.registry import build_builtin_model_tools, build_model_client, default_model_from_env, resolve_provider_name
-from slicer_agent_engine.session import SessionManager
-from slicer_agent_engine.slicer_client import SlicerClient
-from slicer_agent_engine.slicer_launcher import ensure_webserver
-from slicer_agent_engine.tools import ToolContext
-from slicer_agent_engine.video_renderer import VideoRenderer
 
 
 def main() -> None:
@@ -51,44 +31,32 @@ def main() -> None:
     out_dir = Path(os.environ.get("OUT_DIR", "./runs/openai_auto")).expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    log_path = out_dir / "open_ai_auto.log"
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        handlers=[logging.FileHandler(log_path), logging.StreamHandler()],
-    )
-
     llm_provider = os.environ.get("LLM_PROVIDER", "auto")
     llm_model = default_model_from_env()
     max_rounds = int(os.environ.get("MAX_ROUNDS", "12"))
     enable_code_interpreter = os.environ.get("OPENAI_ENABLE_CODE_INTERPRETER", "").strip().lower() in {"1", "true", "yes", "on"}
     reasoning_effort = os.environ.get("OPENAI_REASONING_EFFORT") or None
 
-    # Gemini (optional)
-    gemini = None
-    if os.environ.get("GEMINI_API_KEY"):
-        gemini_model = os.environ.get("GEMINI_MODEL", "gemini-3.1-pro-preview")
-        gemini = GeminiVideoAnalyzer(model=gemini_model)
-
-    # Start/ensure Slicer
-    ensure_webserver(
+    runtime = bootstrap_runtime(
+        out_dir=out_dir,
+        log_name="open_ai_auto.log",
         base_url=base_url,
+        provider=llm_provider,
+        model=llm_model,
+        enable_code_interpreter=enable_code_interpreter,
+        enable_gemini_video=bool(os.environ.get("GEMINI_API_KEY")),
+        ensure_slicer_ready=True,
         slicer_executable=Path(os.environ.get("SLICER_EXECUTABLE", "/Applications/Slicer.app/Contents/MacOS/Slicer")),
-        bridge_dir=bridge_dir,
         require_exec=True,
         require_slice_render=True,
     )
-
-    # Connect
-    client = SlicerClient(base_url=base_url)
-    session = SessionManager(out_dir=out_dir)
+    log_path = runtime.log_path
+    session = runtime.context.session
     session.log_run_event("script_start", script="open_ai_auto.py", case_path=str(case_path_p), cli_env={"LLM_PROVIDER": llm_provider, "LLM_MODEL": llm_model, "MAX_ROUNDS": max_rounds})
-    video = VideoRenderer()
-    ctx = ToolContext(client=client, session=session, bridge_dir=bridge_dir, video=video, gemini=gemini)
-
-    resolved_provider = resolve_provider_name(llm_provider, llm_model)
-    model_client = build_model_client(resolved_provider, model=llm_model)
-    extra_model_tools = build_builtin_model_tools(resolved_provider, model=llm_model, enable_code_interpreter=enable_code_interpreter)
+    ctx = runtime.context.ctx
+    resolved_provider = runtime.model.resolved_provider
+    model_client = runtime.model.model_client
+    extra_model_tools = runtime.model.extra_model_tools
 
     instructions = (
         "You are a radiology assistant using a remote multimodal medical image viewer (3D Slicer) for MRI/CT/PET. "

@@ -22,12 +22,11 @@ class GeminiVideoAnalyzer:
 
     Model
     -----
-    Default is `gemini-3-pro-preview` (as requested). Note: this model is deprecated per Gemini docs.
-    Prefer `gemini-3.1-pro-preview` via the `model` argument or GEMINI_MODEL env var.
+    Default is `gemini-3.1-pro-preview` (recommended). You can override via the `model` argument or GEMINI_MODEL env var.
     """
 
     api_key: Optional[str] = None
-    model: str = "gemini-3-pro-preview"
+    model: str = "gemini-3.1-pro-preview"
     file_activation_timeout_s: float = 120.0
     file_poll_interval_s: float = 1.0
 
@@ -94,5 +93,6 @@ class GeminiVideoAnalyzer:
         response = self.client.models.generate_content(
             model=self.model,
             contents=[ready_file, prompt],
+            config={"automatic_function_calling": {"disable": True}},
         )
         return response.text

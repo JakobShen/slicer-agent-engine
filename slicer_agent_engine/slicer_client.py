@@ -635,8 +635,14 @@ class SlicerClient:
         payload_b64 = base64.b64encode(payload_json.encode("utf-8")).decode("ascii")
         bridge_dir = Path(bridge_dir).resolve()
 
-        source = f"""import json, base64, importlib.util, pathlib
+        source = f"""import json, base64, importlib, importlib.util, pathlib, sys
 bridge_dir = pathlib.Path(r\"{str(bridge_dir)}\")
+if str(bridge_dir) not in sys.path:
+    sys.path.insert(0, str(bridge_dir))
+for name in list(sys.modules):
+    if name in {{"slicer_agent_bridge_runtime", "bridge_runtime"}} or name.startswith("bridge_runtime."):
+        sys.modules.pop(name, None)
+importlib.invalidate_caches()
 bridge_path = bridge_dir / "slicer_agent_bridge.py"
 spec = importlib.util.spec_from_file_location("slicer_agent_bridge_runtime", str(bridge_path))
 if spec is None or spec.loader is None:
@@ -646,7 +652,12 @@ spec.loader.exec_module(sab)
 payload = json.loads(base64.b64decode(\"{payload_b64}\").decode('utf-8'))
 __execResult = sab.dispatch(payload)
 """
-        return self.exec_python(source, timeout_s=timeout_s)
+        result = self.exec_python(source, timeout_s=timeout_s)
+        if isinstance(result, dict) and result.get("ok") is False:
+            tool_name = str(result.get("tool") or tool)
+            error = str(result.get("error") or "Unknown bridge error")
+            raise SlicerRequestError(f"Slicer bridge error for tool {tool_name}: {error}")
+        return result
 
     # -------------------------
     # /dicom (DICOMweb) raw proxy
